@@ -39,4 +39,5 @@ export const PLANS = {
 
 export type PlanKey = keyof typeof PLANS;
 
-export const UPI_ID = "toxic-karthik.sai@fam";
+// Set UPI_ID as an env var in Railway — falls back to a placeholder if missing
+export const UPI_ID = process.env.UPI_ID ?? "not-configured@upi";
