@@ -28,7 +28,7 @@
     "ping": "0.4.4",
     "node-fetch": "3.3.2",
     "date-fns": "4.1.0",
-    "recharts": "2.13.0",
+    "recharts": "2.15.0",
     "lucide-react": "0.454.0",
     "clsx": "2.1.1",
     "tailwind-merge": "2.5.4",
