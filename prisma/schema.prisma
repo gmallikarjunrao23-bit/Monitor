@@ -1,0 +1,331 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  password      String?
+  role          Role      @default(USER)
+  plan          Plan      @default(FREE)
+  planExpiresAt DateTime?
+  monitorLimit  Int       @default(5)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  monitors      Monitor[]
+  teams         TeamMember[]
+  payments      Payment[]
+  notifications NotificationChannel[]
+  auditLogs     AuditLog[]
+  statusPages   StatusPage[]
+
+  @@map("users")
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Team {
+  id        String       @id @default(cuid())
+  name      String
+  slug      String       @unique
+  createdAt DateTime     @default(now())
+  members   TeamMember[]
+  monitors  Monitor[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id     String   @id @default(cuid())
+  userId String
+  teamId String
+  role   TeamRole @default(VIEWER)
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team   Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("team_members")
+}
+
+enum TeamRole {
+  OWNER
+  ADMINISTRATOR
+  MANAGER
+  OPERATOR
+  VIEWER
+  GUEST
+}
+
+model Monitor {
+  id                  String        @id @default(cuid())
+  userId              String
+  teamId              String?
+  name                String
+  description         String?
+  type                MonitorType
+  target              String
+  method              String        @default("GET")
+  requestBody         String?       @db.Text
+  requestHeaders      Json?
+  expectedStatusCodes Int[]         @default([200])
+  expectedKeyword     String?
+  unexpectedKeyword   String?
+  checkIntervalSec    Int           @default(300)
+  timeoutSec          Int           @default(30)
+  retryCount          Int           @default(2)
+  retryDelaySec       Int           @default(10)
+  region              String        @default("global")
+  sslCheck            Boolean       @default(true)
+  environment         String        @default("production")
+  priority            Priority      @default(MEDIUM)
+  tags                String[]      @default([])
+  status              MonitorStatus @default(PENDING)
+  isPaused            Boolean       @default(false)
+  lastCheckedAt       DateTime?
+  uptimePercent       Float         @default(100)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team?           @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  checks    Check[]
+  incidents Incident[]
+  sslInfo   SSLCertificate?
+
+  @@index([userId])
+  @@map("monitors")
+}
+
+enum MonitorType {
+  HTTP
+  HTTPS
+  TCP
+  PING
+  DNS
+  SSL
+  KEYWORD
+  API
+  WEBSOCKET
+  HEARTBEAT
+}
+
+enum MonitorStatus {
+  PENDING
+  UP
+  DOWN
+  DEGRADED
+  MAINTENANCE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model Check {
+  id             String   @id @default(cuid())
+  monitorId      String
+  success        Boolean
+  statusCode     Int?
+  responseTimeMs Int?
+  errorMessage   String?
+  region         String   @default("global")
+  checkedAt      DateTime @default(now())
+  monitor        Monitor  @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, checkedAt])
+  @@map("checks")
+}
+
+model SSLCertificate {
+  id        String    @id @default(cuid())
+  monitorId String    @unique
+  issuer    String?
+  validFrom DateTime?
+  validTo   DateTime?
+  daysLeft  Int?
+  isValid   Boolean   @default(true)
+  updatedAt DateTime  @updatedAt
+  monitor   Monitor   @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  @@map("ssl_certificates")
+}
+
+model Incident {
+  id                String         @id @default(cuid())
+  monitorId         String
+  title             String
+  status            IncidentStatus @default(INVESTIGATING)
+  severity          Severity       @default(MEDIUM)
+  startedAt         DateTime       @default(now())
+  resolvedAt        DateTime?
+  durationSec       Int?
+  aiSummary         String?        @db.Text
+  aiRootCause       String?        @db.Text
+  aiRecommendation  String?        @db.Text
+  aiImpactEstimate  String?        @db.Text
+  aiExecutiveReport String?        @db.Text
+  isPlanned         Boolean        @default(false)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  monitor Monitor          @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  updates IncidentUpdate[]
+
+  @@index([monitorId])
+  @@map("incidents")
+}
+
+enum IncidentStatus {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model IncidentUpdate {
+  id         String   @id @default(cuid())
+  incidentId String
+  message    String   @db.Text
+  createdAt  DateTime @default(now())
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  @@map("incident_updates")
+}
+
+model NotificationChannel {
+  id       String           @id @default(cuid())
+  userId   String
+  type     NotificationType
+  target   String
+  isActive Boolean          @default(true)
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_channels")
+}
+
+enum NotificationType {
+  EMAIL
+  TELEGRAM
+  DISCORD
+  SLACK
+  WEBHOOK
+  TEAMS
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  userId        String
+  plan          Plan
+  amountInr     Int
+  screenshotUrl String
+  status        PaymentStatus @default(PENDING)
+  adminNote     String?
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model StatusPage {
+  id          String   @id @default(cuid())
+  userId      String
+  slug        String   @unique
+  title       String
+  description String?
+  theme       String   @default("dark")
+  monitorIds  String[] @default([])
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("status_pages")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
