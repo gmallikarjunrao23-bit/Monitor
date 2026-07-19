@@ -1,11 +1,13 @@
 "use client";
 
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, User } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 export function Topbar({ userName, plan }: { userName?: string | null; plan?: string }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <header className="glass sticky top-0 z-40 flex h-14 items-center justify-between border-b border-border-subtle px-8">
@@ -33,7 +35,13 @@ export function Topbar({ userName, plan }: { userName?: string | null; plan?: st
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-10 w-40 rounded-md border border-border bg-surface p-1 shadow-card-hover">
+            <div className="absolute right-0 top-10 w-44 rounded-md border border-border bg-surface p-1 shadow-card-hover">
+              <button
+                onClick={() => { setMenuOpen(false); router.push("/profile"); }}
+                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+              >
+                <User size={14} /> View Profile
+              </button>
               <button
                 onClick={() => signOut({ callbackUrl: "/login" })}
                 className="w-full rounded px-3 py-2 text-left text-sm text-text-secondary hover:bg-surface-hover hover:text-incident"
