@@ -1,55 +1,94 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/lib/auth/auth";
-import { prisma } from "@/lib/db/prisma";
-import { z } from "zod";
+import { NextRequest, NextResponse } from 'next/server';
+import { auth } from '@/lib/auth/auth';
+import { prisma } from '@/lib/db/prisma';
+import { withErrorHandler, handleAsResponse, ApiError } from '@/lib/middleware/errorHandler';
+import { withRateLimit } from '@/lib/middleware/rateLimit';
+import { validateUserId } from '@/lib/middleware/security';
+import { logger } from '@/lib/middleware/logger';
+import { statusPageSchema } from '@/lib/middleware/validation';
 
-const createSchema = z.object({
-  title: z.string().min(1),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
-  monitorIds: z.array(z.string()).default([]),
-});
+export async function GET(req: NextRequest) {
+  const result = await withErrorHandler(async () => {
+    const session = await auth();
+    if (!session?.user) {
+      throw new ApiError(401, 'Unauthorized');
+    }
 
-export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as any).id;
+    const userId = (session.user as any).id;
+    if (!validateUserId(userId)) {
+      throw new ApiError(400, 'Invalid user ID');
+    }
 
-  const pages = await prisma.statusPage.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
+    const pages = await prisma.statusPage.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        slug: true,
+        customDomain: true,
+        title: true,
+        isPublic: true,
+        createdAt: true,
+      },
+    });
+
+    logger.info('Status pages retrieved', { userId });
+
+    return { pages };
   });
 
-  return NextResponse.json({ pages });
+  return handleAsResponse(result);
 }
 
-export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const userId = (session.user as any).id;
+export async function POST(req: NextRequest) {
+  const result = await withErrorHandler(async () => {
+    const session = await auth();
+    if (!session?.user) {
+      throw new ApiError(401, 'Unauthorized');
+    }
 
-  const body = await req.json();
-  const parsed = createSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input", details: parsed.error.flatten() }, { status: 400 });
-  }
+    const userId = (session.user as any).id;
+    if (!validateUserId(userId)) {
+      throw new ApiError(400, 'Invalid user ID');
+    }
 
-  const existing = await prisma.statusPage.findUnique({ where: { slug: parsed.data.slug } });
-  if (existing) {
-    return NextResponse.json({ error: "Slug already taken" }, { status: 409 });
-  }
+    const limitCheck = await withRateLimit(req, userId, 50);
+    if (!limitCheck.allowed) {
+      return limitCheck.response as any;
+    }
 
-  const page = await prisma.statusPage.create({
-    data: {
-      userId,
-      title: parsed.data.title,
-      slug: parsed.data.slug,
-      monitorIds: parsed.data.monitorIds,
-    },
+    const body = await req.json();
+    const parsed = statusPageSchema.safeParse(body);
+
+    if (!parsed.success) {
+      throw new ApiError(400, 'Invalid input', {
+        details: parsed.error.flatten(),
+      });
+    }
+
+    const existing = await prisma.statusPage.findUnique({
+      where: { slug: parsed.data.slug },
+    });
+
+    if (existing) {
+      throw new ApiError(409, 'Status page slug already exists');
+    }
+
+    const page = await prisma.statusPage.create({
+      data: {
+        userId,
+        slug: parsed.data.slug,
+        title: parsed.data.title,
+        description: parsed.data.description,
+        theme: parsed.data.theme ?? 'dark',
+        monitorIds: parsed.data.monitorIds ?? [],
+        isPublic: parsed.data.isPublic ?? true,
+      },
+    });
+
+    logger.info('Status page created', { userId, slug: page.slug });
+
+    return { success: true, page };
   });
 
-  return NextResponse.json({ page }, { status: 201 });
+  return handleAsResponse(result);
 }
