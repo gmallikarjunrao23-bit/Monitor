@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
+import { CommandPalette } from "@/components/layout/CommandPalette";
 import { auth } from "@/lib/auth/auth";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -13,6 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <Topbar userName={session?.user?.name} plan={(session?.user as any)?.plan} />
         <main className="overflow-y-auto">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   );
 }
