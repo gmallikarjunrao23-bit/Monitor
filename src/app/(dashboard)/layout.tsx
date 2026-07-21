@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { CommandPalette } from "@/components/layout/CommandPalette";
+import { SupportWidget } from "@/components/support/SupportWidget";
 import { auth } from "@/lib/auth/auth";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <main className="overflow-y-auto">{children}</main>
       </div>
       <CommandPalette />
+      <SupportWidget />
     </div>
   );
 }
